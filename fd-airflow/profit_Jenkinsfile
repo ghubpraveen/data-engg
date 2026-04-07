@@ -1,0 +1,115 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'JOB_NAME', defaultValue: '', description: 'Argument 1: Job Name')
+        string(name: 'BRANCH', defaultValue: '', description: 'Argument 2: Git Branch')
+        string(name: 'BUILD_ENV', defaultValue: 'UAT', description: 'Argument 3: Environment')
+        choice(name: 'REQUIRED', choices: ['Build', 'Files_Copy', 'Build_And_Files_Copy'], description: 'Argument 4: Action Required')
+        string(name: 'WORKSPACE_PATH', defaultValue: '', description: 'Argument 5: Workspace Path')
+        choice(name: 'VALIDATE_HASHES', choices: ['no', 'yes'], description: 'Argument 6: Validate Hashes')
+        string(name: 'BUILD_USER', defaultValue: '', description: 'Argument 7: Build User')
+        string(name: 'RAM_Memory', defaultValue: '8192', description: 'Argument 8: Node RAM limit')
+    }
+
+    environment {
+        // Exact software paths from your shell script
+        JAVA_HOME = "/u01/sfw/jdk-17.0.5"
+        M2_HOME   = "/u01/sfw/apache-maven-3.6.3"
+        NODE_BIN  = "/u01/sfw/node-v18.14.0-linux-x64/bin"
+        NG_BIN    = "/u01/sfw/node-v18.14.0-linux-x64/lib/node_modules/@angular/cli/bin/ng"
+        
+        // Updating PATH to include these specific versions
+        PATH = "${NODE_BIN}:${M2_HOME}/bin:${JAVA_HOME}/bin:${env.PATH}"
+        
+        // Hash tracking file location
+        HASH_FILE = "/tmp/last_successful_hash_${params.JOB_NAME}.txt"
+    }
+
+    stages {
+        stage('Argument Validation') {
+            steps {
+                script {
+                    // Replicating the shell script's "Arguments are missing" check
+                    if (!params.JOB_NAME || !params.BRANCH || !params.WORKSPACE_PATH) {
+                        error "################# Arguments are missing please confirm the arguments ####################"
+                    }
+                }
+            }
+        }
+
+        stage('Git Management & Smart Build') {
+            steps {
+                script {
+                    // Standard Git actions
+                    sh "git fetch origin ${params.BRANCH}"
+                    sh "git checkout -f ${params.BRANCH}"
+                    sh "git pull origin ${params.BRANCH}"
+                    
+                    // Capture current REVISION
+                    env.REVISION = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
+
+                    // Replicating the "VALIDATE_HASHES" logic exactly
+                    if (params.VALIDATE_HASHES == "yes") {
+                        if (fileExists(env.HASH_FILE)) {
+                            def lastHash = readFile(env.HASH_FILE).trim()
+                            if (env.REVISION == lastHash) {
+                                echo "Current Hash: ${env.REVISION} matches Last Successful Hash."
+                                echo "No code changes found. Exiting build."
+                                currentBuild.result = 'SUCCESS'
+                                return 
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Frontend Generation (Files_Generation)') {
+            when {
+                expression { params.REQUIRED == 'Files_Copy' || params.REQUIRED == 'Build_And_Files_Copy' }
+            }
+            steps {
+                // Using exact binary paths and cleanup steps from shell
+                sh """
+                    npm install --force
+                    node --max_old_space_size=${params.RAM_Memory} ${env.NG_BIN} build --configuration=production
+                    ./node_modules/.bin/gulp angularAll appAll styles
+                    
+                    # Cleanup as per the script
+                    rm -rf node_modules .angular
+                """
+            }
+        }
+
+        stage('Backend Build (Build_APP_WAR)') {
+            when {
+                expression { params.REQUIRED == 'Build' || params.REQUIRED == 'Build_And_Files_Copy' }
+            }
+            steps {
+                script {
+                    def buildDate = sh(script: "date +'%d-%m-%Y %H:%M:%S'", returnStdout: true).trim()
+                    
+                    // Replicating build.properties generation
+                    sh """
+                        echo 'Build_Id=${env.BUILD_NUMBER}' > build.properties
+                        echo 'Build_Date=${buildDate}' >> build.properties
+                        echo 'Build_Revision=${env.REVISION}' >> build.properties
+                    """
+
+                    // Exact Maven command from script
+                    sh "mvn clean install -U -Dbranch_name=${params.BRANCH} -DskipTests"
+                    
+                    // Verification logic: Check sum and size
+                    sh """
+                        ls -lh target/*.war
+                        md5sum target/*.war
+                    """
+                    
+                    // Update the hash file for the next "Smart Build"
+                    writeFile file: env.HASH_FILE, text: env.REVISION
+                }
+            }
+        }
+    }
+}

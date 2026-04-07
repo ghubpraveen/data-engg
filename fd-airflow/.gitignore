@@ -1,0 +1,6 @@
+.idea/
+src/*.json
+__pycache__/
+.DS_Store
+credentials.json
+resources/credentials.json

@@ -1,0 +1,231 @@
+{
+  "components": {
+    "comp-custom-inference-job": {
+      "executorLabel": "exec-custom-inference-job",
+      "inputDefinitions": {
+        "parameters": {
+          "base_gcs_path": {
+            "parameterType": "STRING"
+          },
+          "container_uri": {
+            "parameterType": "STRING"
+          },
+          "data_split_path": {
+            "parameterType": "STRING"
+          },
+          "fs_eval_path": {
+            "parameterType": "STRING"
+          },
+          "job_name": {
+            "parameterType": "STRING"
+          },
+          "job_suffix": {
+            "parameterType": "STRING"
+          },
+          "location_group": {
+            "parameterType": "STRING"
+          },
+          "master_machine_type": {
+            "parameterType": "STRING"
+          },
+          "memory_limit": {
+            "parameterType": "STRING"
+          },
+          "no_worker_threads": {
+            "parameterType": "NUMBER_INTEGER"
+          },
+          "num_workers": {
+            "parameterType": "NUMBER_INTEGER"
+          },
+          "project_id": {
+            "parameterType": "STRING"
+          },
+          "project_location": {
+            "parameterType": "STRING"
+          },
+          "replica_count": {
+            "parameterType": "NUMBER_INTEGER"
+          },
+          "run_type": {
+            "parameterType": "STRING"
+          },
+          "staging_bucket": {
+            "parameterType": "STRING"
+          },
+          "worker_machine_type": {
+            "parameterType": "STRING"
+          }
+        }
+      }
+    }
+  },
+  "defaultPipelineRoot": "gs://user-bucket-dollar-tree/darshan/vertex_pipeline",
+  "deploymentSpec": {
+    "executors": {
+      "exec-custom-inference-job": {
+        "container": {
+          "args": [
+            "--executor_input",
+            "{{$}}",
+            "--function_to_execute",
+            "custom_inference_job"
+          ],
+          "command": [
+            "sh",
+            "-c",
+            "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet     --no-warn-script-location 'google-cloud-aiplatform==1.24.1' 'kfp==2.0.1' && \"$0\" \"$@\"\n",
+            "sh",
+            "-ec",
+            "program_path=$(mktemp -d)\nprintf \"%s\" \"$0\" > \"$program_path/ephemeral_component.py\"\npython3 -m kfp.components.executor_main                         --component_module_path                         \"$program_path/ephemeral_component.py\"                         \"$@\"\n",
+            "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import *\n\ndef custom_inference_job(\n        project_id: str,\n        project_location: str,\n        container_uri: str,\n        staging_bucket: str,\n        job_name: str,\n        job_suffix: str,\n        replica_count: int,\n        master_machine_type: str,\n        worker_machine_type: str,\n        run_type: str,\n        memory_limit: str,\n        base_gcs_path: str,\n        num_workers: int,\n        no_worker_threads: int,\n        data_split_path: str,\n        fs_eval_path: str,\n        location_group: str):\n    \"\"\"Run a custom training job using a training script.\n    \"\"\"\n    import json\n    import logging\n    import os.path\n    import time\n    import google.cloud.aiplatform as aip\n\n    worker_pool_specs = [\n        {\n            \"machine_spec\": {\n                \"machine_type\": master_machine_type,\n            },\n            \"replica_count\": 1,\n            \"container_spec\": {\n                \"image_uri\": container_uri,\n                \"command\": ['bash', 'entrypoint.sh'],\n                \"args\": [\n                    '--run_name', job_name + '_' + job_suffix,\n                    '--run_type', run_type,\n                    '--memory_limit', memory_limit,\n                    '--base_gcs_path', base_gcs_path,\n                    '--num_workers', str(num_workers),\n                    '--no_worker_threads', str(no_worker_threads),\n                    '--data_split_path', data_split_path,\n                    '--fs_eval_path', fs_eval_path,\n                    '--location_group', location_group,\n                    '--source_path_model_s1','gs://user-bucket-dollar-tree/szymon/data-science-dev/train/xgb/20230705_165153',\n                    '--source_path_model_s2','gs://user-bucket-dollar-tree/szymon/data-science-dev/train/xgb/20230705_165516',\n                    '--source_path_model_s3','gs://user-bucket-dollar-tree/szymon/data-science-dev/train/xgb/20230705_165911',\n                    '--source_path_model_s4','gs://user-bucket-dollar-tree/szymon/data-science-dev/data/split/20230705_163347',\n                    '--decision_threshold_step_1','0.5',\n                    '--decision_threshold_step_2','0.5'\n                    '--business_feature_store_base_path','gs://user-bucket-dollar-tree/Dipeshkumar.p/inference_test/LOCATION_GROUP=132.0/LOAD_DATE=2022-08-08',\n                    '--output_path','gs://user-bucket-dollar-tree/darshan/inference_output',\n                    '--location_group_list','132',\n                    '--load_date','2022-08-08',\n                    '--num_workers','10',\n                    '--threads_per_worker','2',\n                    '--memory_limit','512GB'\n\n                ],\n            },\n        },\n        {\n            \"machine_spec\": {\n                \"machine_type\": worker_machine_type,\n            },\n            \"replica_count\": 3,\n            \"container_spec\": {\n                \"image_uri\": container_uri,\n                \"command\": ['bash', 'entrypoint.sh'],\n                \"args\": [\n                    '--memory_limit', \"512GB\",\n                    '--num_workers', str(47),\n                    '--no_worker_threads', str(2)\n                ],\n            },\n        }\n    ]\n\n    my_job = aip.CustomJob(\n        display_name=job_name + '_' + job_suffix,\n        worker_pool_specs=worker_pool_specs,\n        staging_bucket=staging_bucket,\n        project=project_id,\n        location=project_location\n    )\n\n    my_job.run(service_account=\"prod-vm-win-darshan@dollar-tree-project-369709.iam.gserviceaccount.com\")\n\n"
+          ],
+          "image": "python:3.7"
+        }
+      }
+    }
+  },
+  "pipelineInfo": {
+    "description": "Model Training",
+    "name": "model-training"
+  },
+  "root": {
+    "dag": {
+      "tasks": {
+        "custom-inference-job": {
+          "cachingOptions": {
+            "enableCache": true
+          },
+          "componentRef": {
+            "name": "comp-custom-inference-job"
+          },
+          "inputs": {
+            "parameters": {
+              "base_gcs_path": {
+                "runtimeValue": {
+                  "constant": "gs://extracted-bucket-dollar-tree/Ramalingam/phase2/3M/auditonly/vertex_pipeline"
+                }
+              },
+              "container_uri": {
+                "runtimeValue": {
+                  "constant": "us-west1-docker.pkg.dev/dollar-tree-project-369709/fd-dask-docker/dask-mlinference-image:latest"
+                }
+              },
+              "data_split_path": {
+                "componentInputParameter": "data_split_path"
+              },
+              "fs_eval_path": {
+                "componentInputParameter": "data_split_path"
+              },
+              "job_name": {
+                "componentInputParameter": "run_name"
+              },
+              "job_suffix": {
+                "runtimeValue": {
+                  "constant": "Training_20230716_153224"
+                }
+              },
+              "location_group": {
+                "componentInputParameter": "location_group"
+              },
+              "master_machine_type": {
+                "componentInputParameter": "train_master_machine_type"
+              },
+              "memory_limit": {
+                "componentInputParameter": "train_memory_limit"
+              },
+              "no_worker_threads": {
+                "componentInputParameter": "train_no_worker_threads"
+              },
+              "num_workers": {
+                "componentInputParameter": "train_num_workers"
+              },
+              "project_id": {
+                "runtimeValue": {
+                  "constant": "dollar-tree-project-369709"
+                }
+              },
+              "project_location": {
+                "runtimeValue": {
+                  "constant": "us-west1"
+                }
+              },
+              "replica_count": {
+                "componentInputParameter": "train_replica_count"
+              },
+              "run_type": {
+                "componentInputParameter": "run_type"
+              },
+              "staging_bucket": {
+                "runtimeValue": {
+                  "constant": "user-bucket-dollar-tree"
+                }
+              },
+              "worker_machine_type": {
+                "componentInputParameter": "train_worker_machine_type"
+              }
+            }
+          },
+          "taskInfo": {
+            "name": "custom-inference-job"
+          }
+        }
+      }
+    },
+    "inputDefinitions": {
+      "parameters": {
+        "data_split_path": {
+          "defaultValue": "gs://extracted-bucket-dollar-tree/Ramalingam/phase2/3M/auditonly/vertex_training_datasplit/feature_store_3m_train-datasplit/data_split.parquet",
+          "isOptional": true,
+          "parameterType": "STRING"
+        },
+        "location_group": {
+          "defaultValue": "ALL",
+          "isOptional": true,
+          "parameterType": "STRING"
+        },
+        "run_name": {
+          "defaultValue": "DEMO_INFERNCE",
+          "isOptional": true,
+          "parameterType": "STRING"
+        },
+        "run_type": {
+          "defaultValue": "all",
+          "isOptional": true,
+          "parameterType": "STRING"
+        },
+        "train_master_machine_type": {
+          "defaultValue": "n1-highmem-32",
+          "isOptional": true,
+          "parameterType": "STRING"
+        },
+        "train_memory_limit": {
+          "defaultValue": "512GB",
+          "isOptional": true,
+          "parameterType": "STRING"
+        },
+        "train_no_worker_threads": {
+          "defaultValue": 2.0,
+          "isOptional": true,
+          "parameterType": "NUMBER_INTEGER"
+        },
+        "train_num_workers": {
+          "defaultValue": 47.0,
+          "isOptional": true,
+          "parameterType": "NUMBER_INTEGER"
+        },
+        "train_replica_count": {
+          "defaultValue": 3.0,
+          "isOptional": true,
+          "parameterType": "NUMBER_INTEGER"
+        },
+        "train_worker_machine_type": {
+          "defaultValue": "n1-highmem-96",
+          "isOptional": true,
+          "parameterType": "STRING"
+        }
+      }
+    }
+  },
+  "schemaVersion": "2.1.0",
+  "sdkVersion": "kfp-2.0.1"
+}
