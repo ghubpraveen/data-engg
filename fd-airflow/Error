@@ -1,22 +1,17 @@
-Processing Commit: dc20812
-[Pipeline] sh
-+ bash /home/praveen/app_scripts/deploy.sh dc20812
-Starting deployment for commit: 
-sending incremental file list
-Jenkinsfile
+#!bin/bash
+TARGET_DIR="/home/praveen/deployed_app"
 
-sent 1,002 bytes  received 35 bytes  2,074.00 bytes/sec
-total size is 61,141  speedup is 58.96
-✅ Successfully copied files
-[Pipeline] }
-[Pipeline] // script
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] }
-[Pipeline] // withEnv
-[Pipeline] }
-[Pipeline] // withEnv
-[Pipeline] }
-[Pipeline] // node
-[Pipeline] End of Pipeline
-Finished: SUCCESS
+echo "Starting deployment for commit: $COMMIT_HASH"
+mkdir -p $TARGET_DIR
+rsync -rv --no-perms --exclude='.git' . $TARGET_DIR/
+
+if [ $? -eq 0 ]; then
+    echo "✅ Successfully copied files"
+else
+    echo "❌ Deployment failed"
+    exit 1
+fi
+
+
+echo "Build version: $COMMIT_HASH" > $TARGET_DIR/version.txt
+
