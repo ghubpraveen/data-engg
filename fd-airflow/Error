@@ -1,6 +1,9 @@
-if [[ "$BUILD_CAUSE" == *Timer* ]]; then
-        export BUILD_USER="jenkins-bot"
-    else
-    # "Set Jenkins user build variables" plugin sets BUILD_USER_ID
-        export BUILD_USER="${BUILD_CAUSE}"
-    fi
+DEPLOYMENT_REPORT
+-----------------
+Build_Number: 10
+Branch:       HEAD
+Commit:       --
+HEAD
+Cause:        Started by an SCM change
+Date:         Wednesday 08 April 2026 04:58:15 PM IST
+User:		Started by an SCM change
