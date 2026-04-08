@@ -1,9 +1,71 @@
 DEPLOYMENT_REPORT
 -----------------
-Build_Number: 10
-Branch:       HEAD
-Commit:       --
-HEAD
+Build_Number: 11
+Branch:       main
+Commit:       501741b43e14ed920dee7259903d8fb4a7970e97
 Cause:        Started by an SCM change
-Date:         Wednesday 08 April 2026 04:58:15 PM IST
+Date:         Wednesday 08 April 2026 05:10:15 PM IST
 User:		Started by an SCM change
+
+
+       stages {
+        stage('Collect Data & Deploy') {
+            steps {
+                script {
+                    // 1. Gather Variables
+                    def fullHash = env.GIT_COMMIT ?: sh(script: "git rev-parse -- HEAD", returnStdout: true).trim()
+                    def branch = env.GIT_BRANCH ?: sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                    branch = branch.replaceAll('origin/', '').replaceAll('remotes/', '')
+                    def buildNum = env.BUILD_NUMBER
+                    def cause = currentBuild.getBuildCauses()[0].shortDescription
+                    
+                    // 2. Pass them to the script as arguments
+                    // Order: $1=hash, $2=branch, $3=buildNum, $4=cause
+                    sh "bash ${env.SCRIPT_PATH} '${fullHash}' '${branch}' '${buildNum}' '${cause}'"
+                }
+            }
+        }
+    }
+}
+
+
+#!/bin/bash
+
+START_TIME=`date +%s`
+GCP_THREAD=gcp-thread-$START_TIME
+NODE_THREAD=node-thread-$START_TIME
+
+# Assign parameters to readable names
+FULL_COMMIT_HASH=$1
+BRANCH_NAME=$2
+BUILD_NUM=$3
+BUILD_CAUSE=$4
+
+if [[ "$BUILD_CAUSE" == *Timer* ]]; then
+        export BUILD_USER="jenkins-bot"
+    else
+    # "Set Jenkins user build variables" plugin sets BUILD_USER_ID
+        export BUILD_USER="${BUILD_CAUSE}"
+    fi
+
+TARGET_DIR="/home/praveen/deployed_app"
+
+echo "📝 Generating deployment parameters..."
+
+# Create the folder if it doesn't exist
+mkdir -p "$TARGET_DIR"
+
+# Write to param.txt
+{
+    echo "DEPLOYMENT_REPORT"
+    echo "-----------------"
+    echo "Build_Number: $BUILD_NUM"
+    echo "Branch:       $BRANCH_NAME"
+    echo "Commit:       $FULL_COMMIT_HASH"
+    echo "Cause:        $BUILD_CAUSE"
+    echo "Date:         $(date)"
+    echo "User:		$BUILD_USER"
+} > "$TARGET_DIR/param.txt"
+
+# --- Proceed to Java Build ---
+echo "🛠 Building Java Artifact..."
