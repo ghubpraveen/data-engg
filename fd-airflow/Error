@@ -1,128 +1,21 @@
-Started by an SCM change
-Obtained Jenkinsfile from git https://github.com/ghubpraveen/profit-cicd.git
-[Pipeline] Start of Pipeline
-[Pipeline] node
-Running on Jenkins in /var/lib/jenkins/workspace/profit-test
-[Pipeline] {
-[Pipeline] stage
-[Pipeline] { (Declarative: Checkout SCM)
-[Pipeline] checkout
-Selected Git installation does not exist. Using Default
-The recommended git tool is: NONE
-using credential 73181498-27bd-411c-88b8-97251ad8e05f
- > /usr/bin/git rev-parse --resolve-git-dir /var/lib/jenkins/workspace/profit-test/.git # timeout=10
-Fetching changes from the remote Git repository
- > /usr/bin/git config remote.origin.url https://github.com/ghubpraveen/profit-cicd.git # timeout=10
-Fetching upstream changes from https://github.com/ghubpraveen/profit-cicd.git
- > /usr/bin/git --version # timeout=10
- > git --version # 'git version 2.34.1'
-using GIT_ASKPASS to set credentials 
- > /usr/bin/git fetch --tags --force --progress -- https://github.com/ghubpraveen/profit-cicd.git +refs/heads/*:refs/remotes/origin/* # timeout=10
- > /usr/bin/git rev-parse refs/remotes/origin/main^{commit} # timeout=10
-Checking out Revision e8b85667a5d3cdcaa6113752af73a65a6b620311 (refs/remotes/origin/main)
- > /usr/bin/git config core.sparsecheckout # timeout=10
- > /usr/bin/git checkout -f e8b85667a5d3cdcaa6113752af73a65a6b620311 # timeout=10
-Commit message: "Testing Branch Name"
- > /usr/bin/git rev-list --no-walk b8b52f40958f50043598fa27b4059049fbaff9e9 # timeout=10
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] withEnv
-[Pipeline] {
-[Pipeline] withEnv
-[Pipeline] {
-[Pipeline] stage
-[Pipeline] { (Process Commit)
-[Pipeline] script
-[Pipeline] {
-[Pipeline] echo
-Processing Commit: e8b85667a5d3cdcaa6113752af73a65a6b620311
-[Pipeline] echo
-Processing Branch
-[Pipeline] }
-[Pipeline] // script
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] }
-[Pipeline] // withEnv
-[Pipeline] }
-[Pipeline] // withEnv
-[Pipeline] }
-[Pipeline] // node
-[Pipeline] End of Pipeline
-Also:   org.jenkinsci.plugins.workflow.actions.ErrorAction$ErrorId: e2eff596-6279-4726-a1bb-74f8736aa6e4
-java.lang.NullPointerException: Cannot invoke method $() on null object
-	at org.codehaus.groovy.runtime.NullObject.invokeMethod(NullObject.java:91)
-	at org.codehaus.groovy.runtime.callsite.PogoMetaClassSite.call(PogoMetaClassSite.java:47)
-	at org.codehaus.groovy.runtime.callsite.CallSiteArray.defaultCall(CallSiteArray.java:47)
-	at org.codehaus.groovy.runtime.callsite.NullCallSite.call(NullCallSite.java:34)
-	at org.codehaus.groovy.runtime.callsite.CallSiteArray.defaultCall(CallSiteArray.java:47)
-	at org.codehaus.groovy.runtime.callsite.AbstractCallSite.call(AbstractCallSite.java:116)
-	at PluginClassLoader for script-security//org.kohsuke.groovy.sandbox.impl.Checker$1.call(Checker.java:180)
-	at PluginClassLoader for script-security//org.kohsuke.groovy.sandbox.impl.Checker.checkedCall(Checker.java:182)
-	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.sandbox.SandboxInvoker.methodCall(SandboxInvoker.java:17)
-	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.LoggingInvoker.methodCall(LoggingInvoker.java:120)
-	at WorkflowScript.run(WorkflowScript:22)
-	at ___cps.transform___(Native Method)
-	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.ContinuationGroup.methodCall(ContinuationGroup.java:107)
-	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.FunctionCallBlock$ContinuationImpl.dispatchOrArg(FunctionCallBlock.java:118)
-	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.FunctionCallBlock$ContinuationImpl.fixArg(FunctionCallBlock.java:87)
-	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
-	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
-	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.ContinuationPtr$ContinuationImpl.receive(ContinuationPtr.java:71)
-	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.ClosureBlock.eval(ClosureBlock.java:49)
-	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.Next.step(Next.java:84)
-	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.Continuable.run0(Continuable.java:142)
-	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.SandboxContinuable.access$001(SandboxContinuable.java:17)
-	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.SandboxContinuable.run0(SandboxContinuable.java:48)
-	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsThread.runNextChunk(CpsThread.java:188)
-	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsThreadGroup.run(CpsThreadGroup.java:464)
-	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsThreadGroup$2.call(CpsThreadGroup.java:372)
-	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsThreadGroup$2.call(CpsThreadGroup.java:302)
-	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsVmExecutorService.lambda$wrap$4(CpsVmExecutorService.java:143)
-	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
-	at hudson.remoting.SingleLaneExecutorService$1.run(SingleLaneExecutorService.java:139)
-	at jenkins.util.ContextResettingExecutorService$1.run(ContextResettingExecutorService.java:28)
-	at jenkins.security.ImpersonatingExecutorService$1.run(ImpersonatingExecutorService.java:68)
-	at jenkins.util.ErrorLoggingExecutorService.lambda$wrap$0(ErrorLoggingExecutorService.java:51)
-	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
-	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
-	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
-	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
-	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsVmExecutorService$1.call(CpsVmExecutorService.java:53)
-	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsVmExecutorService$1.call(CpsVmExecutorService.java:50)
-	at org.codehaus.groovy.runtime.GroovyCategorySupport$ThreadCategoryInfo.use(GroovyCategorySupport.java:136)
-	at org.codehaus.groovy.runtime.GroovyCategorySupport.use(GroovyCategorySupport.java:275)
-	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsVmExecutorService.lambda$categoryThreadFactory$0(CpsVmExecutorService.java:50)
-	at java.base/java.lang.Thread.run(Thread.java:1583)
-Finished: FAILURE
-
-
-
 pipeline {
     agent any
-    
-    triggers {
-        pollSCM('* * * * *')
-    }
-
     environment {
-        SCRIPT_PATH = "/home/praveen/app_scripts/deploy.sh"
+        SCRIPT_PATH = "/home/praveen/app_scripts/java_deployment.sh"
     }
-
     stages {
-        stage('Process Commit') {
+        stage('Collect Data & Deploy') {
             steps {
                 script {
-                    // Try to get hash from env; if null, fetch it from git directly
-                    def commitHash = env.GIT_COMMIT ?: sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
-                    def fullHash = commitHash
-                    def branchName = env.GIT_BRANCH ?: sh(script: 'git rev-parse --abbrev-ref Head', returnStdout: true).trim()
+                    // 1. Gather Variables
+                    def commit = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    def branch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                    def buildNum = env.BUILD_NUMBER
+                    def cause = currentBuild.getBuildCauses()[0].shortDescription
                     
-                    echo "Processing Commit: ${fullHash}"
-                    echo "Processing Branch" ${branchName}
-                    
-                    // Call the script and pass the hash
-                    sh "bash ${env.SCRIPT_PATH} ${fullHash} ${branchName}"
+                    // 2. Pass them to the script as arguments
+                    // Order: $1=hash, $2=branch, $3=buildNum, $4=cause
+                    sh "bash ${env.SCRIPT_PATH} '${commit}' '${branch}' '${buildNum}' '${cause}'"
                 }
             }
         }
@@ -130,26 +23,32 @@ pipeline {
 }
 
 
+#!/bin/bash
 
-#!bin/bash
+# Assign parameters to readable names
 COMMIT_HASH=$1
 BRANCH_NAME=$2
+BUILD_NUM=$3
+BUILD_CAUSE=$4
 TARGET_DIR="/home/praveen/deployed_app"
 
-echo "Starting deployment for commit: $BRANCH_NAME && $COMMIT_HASH"
-mkdir -p $TARGET_DIR
-rsync -rv --no-perms --exclude='.git' . $TARGET_DIR/
+echo "📝 Generating deployment parameters..."
 
-if [ $? -eq 0 ]; then
-    echo "✅ Successfully copied files"
-else
-    echo "❌ Deployment failed"
-    exit 1
-fi
+# Create the folder if it doesn't exist
+mkdir -p "$TARGET_DIR"
 
+# Write to param.txt
+{
+    echo "DEPLOYMENT_REPORT"
+    echo "-----------------"
+    echo "Build_Number: $BUILD_NUM"
+    echo "Branch:       $BRANCH_NAME"
+    echo "Commit:       $COMMIT_HASH"
+    echo "Cause:        $BUILD_CAUSE"
+    echo "Date:         $(date)"
+} > "$TARGET_DIR/param.txt"
 
-echo "Build Commit: $COMMIT_HASH" > $TARGET_DIR/param.txt
-echo "Build Branch: $BRANCH_NAME" > $TARGET_DIE/param.txt
-
-
-
+# --- Proceed to Java Build ---
+echo "🛠 Building Java Artifact..."
+# mvn clean package -DskipTests
+# ... (rest of your java logic)
