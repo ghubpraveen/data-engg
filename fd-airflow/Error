@@ -1,9 +1,15 @@
-#!bin/bash
+#!/bin/bash
+# ^ Added the '/' before 'bin' (Critical for Linux to find Bash)
+
+# THIS IS THE MISSING PIECE:
+# It takes the 'dc20812' from Jenkins and gives it the name COMMIT_HASH
+COMMIT_HASH=$1
+
 TARGET_DIR="/home/praveen/deployed_app"
 
 echo "Starting deployment for commit: $COMMIT_HASH"
-mkdir -p $TARGET_DIR
-rsync -rv --no-perms --exclude='.git' . $TARGET_DIR/
+mkdir -p "$TARGET_DIR"
+rsync -rv --no-perms --exclude='.git' . "$TARGET_DIR/"
 
 if [ $? -eq 0 ]; then
     echo "✅ Successfully copied files"
@@ -12,6 +18,5 @@ else
     exit 1
 fi
 
-
-echo "Build version: $COMMIT_HASH" > $TARGET_DIR/version.txt
-
+# Now this will actually have the hash!
+echo "Build version: $COMMIT_HASH" > "$TARGET_DIR/version.txt"
