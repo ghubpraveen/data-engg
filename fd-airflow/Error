@@ -6,27 +6,60 @@ pipeline {
     }
 
     environment {
-        SCRIPT_PATH = "/home/praveen/app_scripts/deploy.sh"
+        // --- Script & Path Config ---
+        SCRIPT_PATH    = "/home/praveen/app_scripts/java_deployment.sh"
+        REPO_WORKSPACE = "/var/lib/jenkins/workspace/profit-test" // Adjust to your actual path
+        
+        // --- Docker & GCP Parameters ---
+        BUILD_ENV      = "uat"
+        PROJECT_ID     = "apptivo-app-stag"
+        GCR_URL        = "us-central1-docker.pkg.dev"
+        GCHAT_URL      = "your_gchat_webhook_url_here" 
+        
+        // --- Validation Logic ---
+        VALIDATE_HASHES = "yes"
     }
 
-
-       stages {
+    stages {
         stage('Collect Data & Deploy') {
             steps {
                 script {
-                    // 1. Gather Variables
-                    def fullHash = env.GIT_COMMIT ?: sh(script: "git rev-parse -- HEAD", returnStdout: true).trim()
-                    def branch = env.GIT_BRANCH ?: sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                    // 1. Gather Git Variables
+                    def fullHash = env.GIT_COMMIT ?: sh(script: "git rev-parse HEAD", returnStdout: true).trim()
+                    def branch   = env.GIT_BRANCH ?: sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
                     branch = branch.replaceAll('origin/', '').replaceAll('remotes/', '')
+                    
                     def buildNum = env.BUILD_NUMBER
-                    def cause = currentBuild.getBuildCauses()[0].shortDescription
+                    def cause    = currentBuild.getBuildCauses()[0].shortDescription
+
+                    // 2. Pass Variables to Script
+                    // We add VALIDATE_HASHES and BUILD_ENV as extra arguments ($5 and $6)
+                    echo "🚀 Starting Build #${buildNum} for Branch: ${branch}"
                     
-                    // 2. Pass them to the script as arguments
-                    
-                    sh "bash ${env.SCRIPT_PATH} '${fullHash}' '${branch}' '${buildNum}' '${cause}'"
+                    sh """
+                        bash ${env.SCRIPT_PATH} \
+                        '${fullHash}' \
+                        '${branch}' \
+                        '${buildNum}' \
+                        '${cause}' \
+                        '${env.VALIDATE_HASHES}' \
+                        '${env.BUILD_ENV}'
+                    """
                 }
             }
         }
     }
+
+    // --- REPLACES THE SHELL 'trap' ALERT ---
+    post {
+        failure {
+            script {
+                def buildUser = currentBuild.getBuildCauses()[0].userId ?: "SCM Trigger"
+                sh """
+                    curl -sH 'Content-Type: application/json' -X POST ${env.GCHAT_URL} \
+                    -data '{"text": "Hi ${buildUser}, \\n*${env.JOB_NAME}* (Build #${env.BUILD_NUMBER}) has FAILED. \\nCheck logs here: ${env.BUILD_URL}"}'
+                """
+            }
+        }
+    }
 }
- 
