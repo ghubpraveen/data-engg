@@ -1,5 +1,9 @@
-bash: /home/praveen/app_scripts/deploy.sh: Permission denied
-
-drwxr-xr-x 2 jenkins jenkins 4096 Apr  8 13:41 app_scripts
-
--rwxr-xr-x 1 jenkins jenkins 409 Apr  8 13:41 deploy.sh
++ bash /home/praveen/app_scripts/deploy.sh d5641a4
+Starting deployment for commit: 
+mkdir: cannot create directory ‘/home/praveen/deployed_app’: Permission denied
+sending incremental file list
+rsync: [Receiver] mkdir "/home/praveen/deployed_app" failed: Permission denied (13)
+rsync error: error in file IO (code 11) at main.c(791) [Receiver=3.2.7]
+chown: cannot access '/home/praveen/deployed_app/': No such file or directory
+chmod: cannot access '/home/praveen/deployed_app': No such file or directory
+❌ Deployment failed
