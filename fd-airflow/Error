@@ -1,9 +1,5 @@
-+ bash /home/praveen/app_scripts/deploy.sh d5641a4
-Starting deployment for commit: 
-mkdir: cannot create directory ‘/home/praveen/deployed_app’: Permission denied
-sending incremental file list
-rsync: [Receiver] mkdir "/home/praveen/deployed_app" failed: Permission denied (13)
-rsync error: error in file IO (code 11) at main.c(791) [Receiver=3.2.7]
-chown: cannot access '/home/praveen/deployed_app/': No such file or directory
-chmod: cannot access '/home/praveen/deployed_app': No such file or directory
-❌ Deployment failed
+sent 61,285 bytes  received 114 bytes  122,798.00 bytes/sec
+total size is 60,863  speedup is 0.99
+rsync error: some files/attrs were not transferred (see previous errors) (code 23) at main.c(1338) [sender=3.2.7]
+chown: changing ownership of '/home/praveen/deployed_app/': Operation not permitted
+chmod: changing permissions of '/home/praveen/deployed_app': Operation not permitted
