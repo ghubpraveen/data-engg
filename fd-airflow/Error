@@ -2,64 +2,102 @@ pipeline {
     agent any
     
     triggers {
-        pollSCM('* * * * *')
+        // Triggered automatically when code is merged/pushed
+        // Requires GitHub Webhook to be configured in the Repo settings
+        githubPush() 
     }
 
     environment {
-        // --- Script & Path Config ---
-        SCRIPT_PATH    = "/home/praveen/app_scripts/java_deployment.sh"
-        REPO_WORKSPACE = "/var/lib/jenkins/workspace/profit-test" // Adjust to your actual path
-        
-        // --- Docker & GCP Parameters ---
-        BUILD_ENV      = "uat"
-        PROJECT_ID     = "apptivo-app-stag"
-        GCR_URL        = "us-central1-docker.pkg.dev"
-        GCHAT_URL      = "your_gchat_webhook_url_here" 
-        
-        // --- Validation Logic ---
-        VALIDATE_HASHES = "yes"
+        // Centralized configuration
+        SCRIPT_PATH    = "/u01/jenkins/scripts/java_deployment.sh"
+        PARAM_FILE     = "/u01/jenkins/workspace/param.txt"
+        BUILD_ENV      = "UAT"
+        REPO_WORKSPACE = "${WORKSPACE}" // Absolute path of current build
     }
 
     stages {
-        stage('Collect Data & Deploy') {
+        stage('Auto-Parameter Capture') {
             steps {
                 script {
-                    // 1. Gather Git Variables
-                    def fullHash = env.GIT_COMMIT ?: sh(script: "git rev-parse HEAD", returnStdout: true).trim()
-                    def branch   = env.GIT_BRANCH ?: sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
-                    branch = branch.replaceAll('origin/', '').replaceAll('remotes/', '')
-                    
-                    def buildNum = env.BUILD_NUMBER
-                    def cause    = currentBuild.getBuildCauses()[0].shortDescription
+                    // 1. Detect Git Info automatically
+                    def commitHash = env.GIT_COMMIT ?: sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    def branchName = env.GIT_BRANCH ?: "main"
+                    branchName = branchName.replaceAll('origin/', '').replaceAll('remotes/', '')
 
-                    // 2. Pass Variables to Script
-                    // We add VALIDATE_HASHES and BUILD_ENV as extra arguments ($5 and $6)
-                    echo "🚀 Starting Build #${buildNum} for Branch: ${branch}"
+                    // 2. Identify the Trigger
+                    def cause = currentBuild.getBuildCauses()[0].shortDescription
                     
+                    echo "🚀 Merge detected on ${branchName}. Commit: ${commitHash}"
+
+                    // 3. Store in param.txt for the Shell Script to consume
+                    // We write these in KEY=VALUE format so the shell can 'source' them
                     sh """
-                        bash ${env.SCRIPT_PATH} \
-                        '${fullHash}' \
-                        '${branch}' \
-                        '${buildNum}' \
-                        '${cause}' \
-                        '${env.VALIDATE_HASHES}' \
-                        '${env.BUILD_ENV}'
+                        echo "JOB_NAME='${env.JOB_NAME}'" > ${env.PARAM_FILE}
+                        echo "BRANCH='${branchName}'" >> ${env.PARAM_FILE}
+                        echo "BUILD_ENV='${env.BUILD_ENV}'" >> ${env.PARAM_FILE}
+                        echo "COMMIT_HASH='${commitHash}'" >> ${env.PARAM_FILE}
+                        echo "REPO_WORKSPACE='${env.REPO_WORKSPACE}'" >> ${env.PARAM_FILE}
+                        echo "BUILD_CAUSE='${cause}'" >> ${env.PARAM_FILE}
                     """
                 }
             }
         }
-    }
 
-    // --- REPLACES THE SHELL 'trap' ALERT ---
-    post {
-        failure {
-            script {
-                def buildUser = currentBuild.getBuildCauses()[0].userId ?: "SCM Trigger"
-                sh """
-                    curl -sH 'Content-Type: application/json' -X POST ${env.GCHAT_URL} \
-                    -data '{"text": "Hi ${buildUser}, \\n*${env.JOB_NAME}* (Build #${env.BUILD_NUMBER}) has FAILED. \\nCheck logs here: ${env.BUILD_URL}"}'
-                """
+        stage('Execute Java Deployment') {
+            steps {
+                // Execute the script. No need to pass 8 arguments anymore 
+                // because the script will 'source' the param.txt file.
+                sh "bash ${env.SCRIPT_PATH}"
             }
         }
     }
+
+    post {
+        failure {
+            echo "❌ Automatic Deployment Failed for ${env.JOB_NAME}"
+        }
+    }
 }
+
+
+#!/bin/bash
+set -e
+trap 'echo "❌ Script failed at line $LINENO."' ERR
+
+# --- NEW: Parameter Loading ---
+PARAM_FILE="/u01/jenkins/workspace/param.txt"
+
+if [ -f "$PARAM_FILE" ]; then
+    source "$PARAM_FILE"
+    echo "✅ Parameters loaded for Branch: $BRANCH"
+else
+    echo "❌ Error: Parameter file not found at $PARAM_FILE"
+    exit 1
+fi
+
+# --- Automatically Map Variables from the File ---
+# Note: We use the names defined in the Jenkinsfile 'echo' commands
+export REVISION=$COMMIT_HASH
+export repo_workspace=$REPO_WORKSPACE
+# export REQUIRED is set based on your specific job needs, 
+# or can be added to the Jenkinsfile 'echo' block.
+export REQUIRED="Build_And_Files_Copy" 
+export VALIDATE_HASHES="yes"
+export TOMCAT_BRANCH="main" # Or detect via logic
+
+# --- User Logic (Remains the same) ---
+if [[ "$BUILD_CAUSE" == *Timer* ]]; then
+    export BUILD_USER="jenkins-bot"
+else
+    export BUILD_USER="${BUILD_CAUSE}"
+fi
+
+# ... [The rest of your existing Docker/Maven logic remains the same] ...
+# Instead of $1, $2, etc., the script now uses the exported variables above.
+
+echo "🛠 Starting Build for $BRANCH using Hash $REVISION"
+
+# Call your functions as usual
+Build_APP_WAR
+Docker_Image_Generation
+Deployment
