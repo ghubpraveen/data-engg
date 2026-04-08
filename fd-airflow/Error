@@ -1,123 +1,32 @@
-########## Files Copy to GCP CDN Bucket parameter #################
-    export Destination="/u01/jenkins/profit-FC/App"
-########## Docker Image generation Paramater ############
-    export NAME="Profit_UAT_App"
-    export STS="app"
-    export BUILD_PATH="$repo_workspace/workspace/app-tomcat"
-    export WAR_NAME="app.war"
-    export SRC_WAR="$repo_workspace/workspace/profit/app-web/target/app.war"
-    export DEST_WAR="$BUILD_PATH/app/live/profit/webapps/app.war"
-    export DEST="$BUILD_PATH/app/live/profit/webapps/"
-    export PROJECT="apptivo-app-stag"
-    export GCR="us-central1-docker.pkg.dev"
-    export ENV="uat-build"
-    export START_TIME=`date +%s`
-    export THREAD=thread-$START_TIME
-########## Uat Environment Bouncing Paramater ############
-    export FILE_VERSION="$(cat $repo_workspace/workspace/$BUILD_ENV-fc.txt)"
-    echo "$(cat $repo_workspace/workspace/$BUILD_ENV-fc.txt)"
-    export CDN_BUCKET=$(/u01/jenkins/scripts/pft_fn_GCP_And_AWS_CDN_Bucket_AND_URL.sh $BUILD_ENV GCP_CDN_BUCKET)
-    export CDN_URL=$(/u01/jenkins/scripts/pft_fn_GCP_And_AWS_CDN_Bucket_AND_URL.sh $BUILD_ENV GCP_CDN_URL)
-    export AWS_S3_BUCKET=$(/u01/jenkins/scripts/pft_fn_GCP_And_AWS_CDN_Bucket_AND_URL.sh $BUILD_ENV AWS_S3_BUCKET)
-    export AWS_S3_URL=$(/u01/jenkins/scripts/pft_fn_GCP_And_AWS_CDN_Bucket_AND_URL.sh $BUILD_ENV AWS_S3_URL)
-
-########################################################
-if [ $# == 8 ] ;
-then
-
-send_alert() {
-	curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL --data '{"text": "Hi '$BUILD_USER', \n'*$JOB_NAME*' is Failed, Please check", "thread" : { "threadKey": "THREAD-'$(date +%s)'"}}' >> /dev/null
-    exit 1
-}
-
-trap 'send_alert; exit 1' ERR
-##################################
-GIT_PULL() {
-    set -e
-    trap 'echo "❌ Error: git operation failed"; exit 1' ERR
-
-    local JOB_ACTION=$1     # Action label for message
-    local GIT_REQUIRED=$2       # Type of action: Build, Files_Copy, etc.
-
-    echo "📥 Fetching updates from remote for branch: $BRANCH"
-    git fetch origin "$BRANCH"
-    git checkout -f "$BRANCH"
-    git pull origin "$BRANCH"
-
-    echo "GIT_REQUIRED=$GIT_REQUIRED"
-
-    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-    REVISION=$(git rev-parse HEAD)
-
-    echo "🔍 Current branch: $CURRENT_BRANCH"
-    echo "🔍 Current revision: $REVISION"
-
-    sleep 1
-
-    Build_HASH_FILE="$repo_workspace/workspace/$BUILD_ENV-app-buildinfo.txt"
-    FC_HASH_FILE="$repo_workspace/workspace/$BUILD_ENV-app-FCinfo.txt"
-
-    [[ -f "$Build_HASH_FILE" ]] && LAST_BUILD_HASH=$(awk '{print $3}' "$Build_HASH_FILE")
-    [[ -f "$FC_HASH_FILE" ]] && LAST_FC_HASH=$(awk '{print $3}' "$FC_HASH_FILE")
-
-    declare -A LAST_HASHES=(
-        ["Build"]="${LAST_BUILD_HASH:-}"
-        ["Files_Copy"]="${LAST_FC_HASH:-}"
-    )
-
-    if [[ -z "$GIT_REQUIRED" ]]; then
-        echo "❌ ERROR: No REQUIRED argument passed"
-        exit 1
-    fi
-
-    echo "🔁 Validate Hashes: $VALIDATE_HASHES"
-
-    if [[ "${VALIDATE_HASHES,,}" == "yes" ]]; then
-        echo "✅ Hash validation enabled"
-
-        local expected_hash="${LAST_HASHES[$GIT_REQUIRED]}"
-
-        if [[ "$REVISION" == "$expected_hash" ]]; then
-            echo "🚫 No new commits for $GIT_REQUIRED. Skipping..."
-
-            curl -sH 'Content-Type: application/json' -X POST "$GCHAT_URL" \
-            --data '{
-                "text": "Hi '"$BUILD_USER"',\n🚫 No new commit detected in branch: *'"$CURRENT_BRANCH"'*, \nSkipping the *'"${JOB_ACTION,,}"'* job.",
-                "thread": { "threadKey": "THREAD-'"$(date +%s)"'" }
-            }' >> /dev/null
-
-            exit 0
-        fi
-
-        echo "✅ New commit detected: $REVISION"
-        echo "🚀 Running build..."
-    else
-        echo "⚠️ Hash validation skipped due to parameter setting."
-        echo "🚀 Running build anyway..."
-    fi
-}
-############# Build and Files copy Hashcode info saving ################
-Revision_Save_info() {
-    local ACTION=$1
-        if [[ -z "$ACTION" ]]; then
-        echo "❌ ERROR: No ACTION passed"
-        exit 1
-    fi
-    echo ">> DEBUG: ACTION=$ACTION"
-
-    case "$ACTION" in
-        "Files_Copy")
-            echo "$ACTION alone in $BUILD_ENV Env"
-            echo "Git Hash: $REVISION and Branch: $CURRENT_BRANCH" > "$repo_workspace/workspace/$BUILD_ENV-app-FCinfo.txt"
-            ;;
-        "Build")
-            echo "$ACTION in $BUILD_ENV Env"
-            echo "Git Hash: $REVISION and Branch: $CURRENT_BRANCH" > "$repo_workspace/workspace/$BUILD_ENV-app-buildinfo.txt"
-            ;;
-        *)
-            echo "❌ ERROR: Invalid Input Request: $ACTION"
-            exit 1
-            ;;
-    esac
+pipeline {
+    agent any
     
+    triggers {
+        pollSCM('* * * * *')
+    }
+
+    environment {
+        SCRIPT_PATH = "/home/praveen/app_scripts/deploy.sh"
+    }
+
+
+       stages {
+        stage('Collect Data & Deploy') {
+            steps {
+                script {
+                    // 1. Gather Variables
+                    def fullHash = env.GIT_COMMIT ?: sh(script: "git rev-parse -- HEAD", returnStdout: true).trim()
+                    def branch = env.GIT_BRANCH ?: sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                    branch = branch.replaceAll('origin/', '').replaceAll('remotes/', '')
+                    def buildNum = env.BUILD_NUMBER
+                    def cause = currentBuild.getBuildCauses()[0].shortDescription
+                    
+                    // 2. Pass them to the script as arguments
+                    
+                    sh "bash ${env.SCRIPT_PATH} '${fullHash}' '${branch}' '${buildNum}' '${cause}'"
+                }
+            }
+        }
+    }
 }
+ 
