@@ -1,103 +1,183 @@
 pipeline {
     agent any
-    
+
+    // No manual parameters — all are derived from the merge event
+    options {
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
     triggers {
-        // Triggered automatically when code is merged/pushed
-        // Requires GitHub Webhook to be configured in the Repo settings
-        githubPush() 
+        // GitHub webhook triggers this automatically on push/merge
+        githubPush()
     }
 
     environment {
-        // Centralized configuration
-        SCRIPT_PATH    = "/u01/jenkins/scripts/java_deployment.sh"
-        PARAM_FILE     = "/u01/jenkins/workspace/param.txt"
-        BUILD_ENV      = "UAT"
-        REPO_WORKSPACE = "${WORKSPACE}" // Absolute path of current build
+        PARAMS_FILE = "/u01/jenkins/params/${env.JOB_NAME}-build-params.env"
+        SCRIPTS_DIR = "/u01/jenkins/scripts"
     }
 
     stages {
-        stage('Auto-Parameter Capture') {
+
+        stage('Detect Merge & Extract Parameters') {
             steps {
                 script {
-                    // 1. Detect Git Info automatically
-                    def commitHash = env.GIT_COMMIT ?: sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
-                    def branchName = env.GIT_BRANCH ?: "main"
-                    branchName = branchName.replaceAll('origin/', '').replaceAll('remotes/', '')
+                    // --- Derive all parameters from the merge context ---
 
-                    // 2. Identify the Trigger
-                    def cause = currentBuild.getBuildCauses()[0].shortDescription
-                    
-                    echo "🚀 Merge detected on ${branchName}. Commit: ${commitHash}"
+                    env.BRANCH         = env.GIT_BRANCH?.replaceAll('^origin/', '') ?: scm.branches[0].name
+                    env.COMMIT_HASH    = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    env.BUILD_CAUSE    = currentBuild.getBuildCauses('com.cloudbees.plugins.credentials.UserIdCause')
+                                            ?.collect { it.userId }?.join(',') ?: 'jenkins-bot'
 
-                    // 3. Store in param.txt for the Shell Script to consume
-                    // We write these in KEY=VALUE format so the shell can 'source' them
-                    sh """
-                        echo "JOB_NAME='${env.JOB_NAME}'" > ${env.PARAM_FILE}
-                        echo "BRANCH='${branchName}'" >> ${env.PARAM_FILE}
-                        echo "BUILD_ENV='${env.BUILD_ENV}'" >> ${env.PARAM_FILE}
-                        echo "COMMIT_HASH='${commitHash}'" >> ${env.PARAM_FILE}
-                        echo "REPO_WORKSPACE='${env.REPO_WORKSPACE}'" >> ${env.PARAM_FILE}
-                        echo "BUILD_CAUSE='${cause}'" >> ${env.PARAM_FILE}
+                    // Map branch name → build environment
+                    def branchEnvMap = [
+                        'develop'      : 'dev',
+                        'release/uat'  : 'uat',
+                        'release/stag' : 'stag',
+                        'main'         : 'prod'
+                    ]
+                    env.BUILD_ENV = branchEnvMap[env.BRANCH] ?: 'uat'
+
+                    // Decide build type based on changed files
+                    def changedFiles = sh(
+                        script: 'git diff --name-only HEAD~1 HEAD || echo "unknown"',
+                        returnStdout: true
+                    ).trim()
+
+                    if (changedFiles.contains('app-web') || changedFiles.contains('src/main')) {
+                        env.REQUIRED = 'Build_And_Files_Copy'
+                    } else if (changedFiles.contains('static') || changedFiles.contains('public')) {
+                        env.REQUIRED = 'Files_Copy'
+                    } else {
+                        env.REQUIRED = 'Build'
+                    }
+
+                    env.TOMCAT_BRANCH    = env.BRANCH
+                    env.REPO_WORKSPACE   = "/u01/jenkins"
+                    env.VALIDATE_HASHES  = "yes"
+
+                    echo """
+                    ========= Derived Build Parameters =========
+                    BRANCH         : ${env.BRANCH}
+                    COMMIT_HASH    : ${env.COMMIT_HASH}
+                    BUILD_ENV      : ${env.BUILD_ENV}
+                    REQUIRED       : ${env.REQUIRED}
+                    TOMCAT_BRANCH  : ${env.TOMCAT_BRANCH}
+                    BUILD_CAUSE    : ${env.BUILD_CAUSE}
+                    VALIDATE_HASHES: ${env.VALIDATE_HASHES}
+                    ============================================
                     """
                 }
             }
         }
 
-        stage('Execute Java Deployment') {
+        stage('Write Params to File') {
             steps {
-                // Execute the script. No need to pass 8 arguments anymore 
-                // because the script will 'source' the param.txt file.
-                sh "bash ${env.SCRIPT_PATH}"
+                script {
+                    // Ensure directory exists on Jenkins VM
+                    sh "mkdir -p \$(dirname ${env.PARAMS_FILE})"
+
+                    // Write all params to a file — java_deployment.sh will source this
+                    writeFile file: env.PARAMS_FILE, text: """\
+JOB_NAME=${env.JOB_NAME}
+BRANCH=${env.BRANCH}
+BUILD_ENV=${env.BUILD_ENV}
+REQUIRED=${env.REQUIRED}
+REPO_WORKSPACE=${env.REPO_WORKSPACE}
+TOMCAT_BRANCH=${env.TOMCAT_BRANCH}
+BUILD_CAUSE=${env.BUILD_CAUSE}
+VALIDATE_HASHES=${env.VALIDATE_HASHES}
+COMMIT_HASH=${env.COMMIT_HASH}
+"""
+                    echo "Parameters written to: ${env.PARAMS_FILE}"
+                    sh "cat ${env.PARAMS_FILE}"
+                }
+            }
+        }
+
+        stage('Run Deployment Script') {
+            steps {
+                script {
+                    sh """
+                        set -e
+                        echo "Invoking java_deployment.sh with params from file..."
+                        bash ${env.SCRIPTS_DIR}/java_deployment.sh \\
+                            "${env.JOB_NAME}"        \\
+                            "${env.BRANCH}"          \\
+                            "${env.BUILD_ENV}"       \\
+                            "${env.REQUIRED}"        \\
+                            "${env.REPO_WORKSPACE}"  \\
+                            "${env.TOMCAT_BRANCH}"   \\
+                            "${env.BUILD_CAUSE}"     \\
+                            "${env.VALIDATE_HASHES}"
+                    """
+                }
             }
         }
     }
 
     post {
+        success {
+            echo "✅ Pipeline completed successfully for branch: ${env.BRANCH}"
+        }
         failure {
-            echo "❌ Automatic Deployment Failed for ${env.JOB_NAME}"
+            echo "❌ Pipeline failed. Check Google Chat alerts."
+        }
+        always {
+            // Archive the params file as a build artifact for audit
+            archiveArtifacts artifacts: "**/params/*.env", allowEmptyArchive: true
         }
     }
 }
 
 
+
 #!/bin/bash
+# Modified to support both:
+#   a) Direct invocation with positional args (legacy/manual)
+#   b) Auto-triggered via Jenkinsfile (params sourced from file)
+
 set -e
 trap 'echo "❌ Script failed at line $LINENO."' ERR
 
-# --- NEW: Parameter Loading ---
-PARAM_FILE="/u01/jenkins/workspace/param.txt"
+START_TIME=`date +%s`
 
-if [ -f "$PARAM_FILE" ]; then
-    source "$PARAM_FILE"
-    echo "✅ Parameters loaded for Branch: $BRANCH"
+# ── Parameter Resolution ──────────────────────────────────────────────
+# If called from Jenkinsfile, a params file is written first.
+# Source it so all variables are available, then allow positional
+# args to override (for backward-compatible manual runs).
+
+PARAMS_FILE="/u01/jenkins/params/${JOB_NAME:-default}-build-params.env"
+
+if [[ -f "$PARAMS_FILE" ]]; then
+    echo "📄 Sourcing parameters from: $PARAMS_FILE"
+    set -a          # auto-export all sourced vars
+    source "$PARAMS_FILE"
+    set +a
 else
-    echo "❌ Error: Parameter file not found at $PARAM_FILE"
+    echo "⚠️  Params file not found. Falling back to positional arguments."
+fi
+
+# Positional args override file values (keeps manual execution working)
+export JOB_NAME="${1:-$JOB_NAME}"
+export BRANCH="${2:-$BRANCH}"
+export BUILD_ENV="${3:-$BUILD_ENV}"
+export REQUIRED="${4:-$REQUIRED}"
+export repo_workspace="${5:-$REPO_WORKSPACE}"
+export TOMCAT_BRANCH="${6:-$TOMCAT_BRANCH}"
+export BUILD_CAUSE="${7:-$BUILD_CAUSE}"
+export VALIDATE_HASHES="${8:-$VALIDATE_HASHES}"
+export hostname=`hostname`
+
+# ── Validate all required params are present ─────────────────────────
+MISSING=()
+for var in JOB_NAME BRANCH BUILD_ENV REQUIRED repo_workspace TOMCAT_BRANCH BUILD_CAUSE VALIDATE_HASHES; do
+    [[ -z "${!var}" ]] && MISSING+=("$var")
+done
+
+if [[ ${#MISSING[@]} -gt 0 ]]; then
+    echo "❌ Missing parameters: ${MISSING[*]}"
     exit 1
 fi
 
-# --- Automatically Map Variables from the File ---
-# Note: We use the names defined in the Jenkinsfile 'echo' commands
-export REVISION=$COMMIT_HASH
-export repo_workspace=$REPO_WORKSPACE
-# export REQUIRED is set based on your specific job needs, 
-# or can be added to the Jenkinsfile 'echo' block.
-export REQUIRED="Build_And_Files_Copy" 
-export VALIDATE_HASHES="yes"
-export TOMCAT_BRANCH="main" # Or detect via logic
-
-# --- User Logic (Remains the same) ---
-if [[ "$BUILD_CAUSE" == *Timer* ]]; then
-    export BUILD_USER="jenkins-bot"
-else
-    export BUILD_USER="${BUILD_CAUSE}"
-fi
-
-# ... [The rest of your existing Docker/Maven logic remains the same] ...
-# Instead of $1, $2, etc., the script now uses the exported variables above.
-
-echo "🛠 Starting Build for $BRANCH using Hash $REVISION"
-
-# Call your functions as usual
-Build_APP_WAR
-Docker_Image_Generation
-Deployment
+# ... rest of your existing script continues unchanged from line 33 onward ...
