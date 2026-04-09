@@ -1,78 +1,68 @@
-#!/bin/bash
-set -e
-trap 'echo "❌ Script failed at line $LINENO."' ERR
+# WAR Generation function
+Build_APP_WAR() {
+    export GCP_WAR_THREAD=WAR-thread-$START_TIME
 
-START_TIME=`date +%s`
-GCP_THREAD=gcp-thread-$START_TIME
+    send_alert() {
+        curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL \
+        --data '{"text": "Hi '$BUILD_USER', \n'*$JOB_NAME*' \nMaven WAR Generation is Failed,\nPlease check", "thread" : { "threadKey": "THREAD-'$(date +%s)'"}}' >> /dev/null
+        exit 1
+    }
 
-# ── GChat URLs (unchanged from original) ─────────────────
-export GCHAT_URL="https://chat.googleapis.com/v1/spaces/AAAAkRPquRE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=8P_S4Exea74xKAFnKua2-q7Tnaawpkk7hwhESi8L4f0&messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD"
-export DEV_GCHAT_URL="https://chat.googleapis.com/v1/spaces/AAQAncj_kkw/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Qz3EajgBpT1HaSNIIEwGGaAb1-UpdBL53KlMHXFaz7k&messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD"
+    # ── Use Jenkins workspace directly ────────────────────
+    JOB_PATH=$WORKSPACE
 
-# ── Step 1: Read the params file ──────────────────────────
-PARAMS_FILE=$1
+    cd $JOB_PATH
 
-if [[ -z "$PARAMS_FILE" || ! -f "$PARAMS_FILE" ]]; then
-    echo "❌ ERROR: Params file not found: $PARAMS_FILE"
-    exit 1
-fi
+    # ── Build info for GChat ───────────────────────────────
+    export BUILDINFO="Branch: $BRANCH | Commit: ${COMMIT_HASH:0:7}"
 
-echo "📄 Reading params from: $PARAMS_FILE"
-set -a
-source "$PARAMS_FILE"
-set +a
-
-# ── Step 2: Print what we got ─────────────────────────────
-echo "==============================="
-echo "JOB_NAME    : $JOB_NAME"
-echo "BRANCH      : $BRANCH"
-echo "COMMIT_HASH : $COMMIT_HASH"
-echo "BUILD_ENV   : $BUILD_ENV"
-echo "REQUIRED    : $REQUIRED"
-echo "WORKSPACE   : $WORKSPACE"
-echo "==============================="
-
-    if [[ "$BUILD_CAUSE" == *Timer* ]]; then
-        export BUILD_USER="jenkins-bot"
-    else
-        export BUILD_USER="${BUILD_CAUSE}"
-    fi
-
-# ── Alert Functions (unchanged from original) ─────────────
-send_alert() {
+    # ── GChat: WAR generation started ─────────────────────
     curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL \
-    --data '{"text": "Hi '$BUILD_USER', \n'*$JOB_NAME*' is Failed, Please check", 
-    "thread" : { "threadKey": "THREAD-'$(date +%s)'"}}' >> /dev/null
-    exit 1
-}
+    --data '{"text": "'"Hi <users/all>\nUAT_Deployment_Maven_"$BUILD_USER",\n*$BUILDINFO*"'", "thread" : { "threadKey": "'"$GCP_WAR_THREAD"'"}}' >> /dev/null
 
-send_success() {
+    curl -sH 'Content-Type: application/json' -X POST $DEV_GCHAT_URL \
+    --data '{"text": "'"Hi <users/all>\nUAT_Deployment_Maven_"$BUILD_USER",\n*$BUILDINFO*"'", "thread" : { "threadKey": "'"$GCP_WAR_THREAD"'"}}' >> /dev/null
+
+    sleep 1
+
     curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL \
-    --data '{"text": "Hi '$BUILD_USER', \n'*$JOB_NAME*' WAR build is successful on branch: '$BRANCH' \nCommit: '${COMMIT_HASH:0:7}'",
-    "thread" : { "threadKey": "THREAD-'$(date +%s)'"}}' >> /dev/null
+    --data '{"text": "'"Hi <users/all>\nJob Name: $JOB_NAME,\n*Application WAR initiated* in $BUILD_ENV"'", "thread" : { "threadKey": "'"$GCP_WAR_THREAD"'"}}' >> /dev/null
+
+    # ── Build properties file ──────────────────────────────
+    MVN_ENV_PROP_FILE="/var/tmp/$JOB_NAME-mvn-env.properties"
+
+    # ── Safe MR_ID for GitHub (GitLab uses merge request) ──
+    MR_ID=$(git log -1 | grep "See merge request" | cut -d"!" -f2 || echo "0")
+    MR_ID=${MR_ID:-0}
+
+    COMMITS_COUNT=$(git log --oneline | wc -l)
+    BUILD_ID="${COMMITS_COUNT}_${MR_ID}"
+    TIME_STAMP=$(date +%Y%m%d-%H%M-%Z)
+
+    echo "build_id=$BUILD_ID"   > $MVN_ENV_PROP_FILE
+    echo "build_time=$TIME_STAMP" >> $MVN_ENV_PROP_FILE
+
+    # ── Maven build ────────────────────────────────────────
+    echo "Maven build going to start"
+
+    # Use system Java and Maven (no hardcoded paths)
+    mvn clean package -DskipTests \
+        -Dbranch_name=$BRANCH \
+        -Dcommit_hash=$COMMIT_HASH \
+        -Dbuild_id=$BUILD_ID \
+        -Dbuild_time=$TIME_STAMP || send_alert
+
+    # ── Confirm WAR ────────────────────────────────────────
+    export DEPLOY_SOURCE="$WORKSPACE/target/SampleWebApp.war"
+    export MD5SUM=$(md5sum $DEPLOY_SOURCE | awk '{print $1}')
+    export Application_War_Size=$(du -sh $DEPLOY_SOURCE | cut -f1)
+
+    echo "app.war size = $Application_War_Size"
+
+    # ── GChat: WAR generation done ─────────────────────────
+    curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL \
+    --data '{"text": "'"Hi <users/all>\n*Job Name: $JOB_NAME* \n*Application WAR generated* in $BUILD_ENV \n$BUILDINFO \nmd5sum: *$MD5SUM* \napp.war = *$Application_War_Size*"'", "thread" : { "threadKey": "'"$GCP_WAR_THREAD"'"}}' >> /dev/null
+
+    sleep 1
+    echo "Maven Application WAR Generated is Done"
 }
-
-trap 'send_alert; exit 1' ERR
-
-# ── Step 3: Notify GChat build started ────────────────────
-curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL \
---data '{"text": "Hi '$BUILD_USER', \n'*$JOB_NAME*' Build started on branch: '$BRANCH' \nCommit: '${COMMIT_HASH:0:7}'",
-"thread" : { "threadKey": "THREAD-'$(date +%s)'"}}' >> /dev/null
-
-# ── Step 4: Build WAR ─────────────────────────────────────
-cd "$WORKSPACE"
-
-echo "🔨 Starting Maven WAR build..."
-mvn clean package -DskipTests
-
-# ── Step 5: Confirm WAR was created ───────────────────────
-WAR_FILE="$WORKSPACE/target/SampleWebApp.war"
-
-if [[ -f "$WAR_FILE" ]]; then
-    echo "✅ WAR built successfully: $WAR_FILE"
-    ls -lh "$WAR_FILE"
-    send_success
-else
-    echo "❌ WAR file not found after build!"
-    send_alert
-fi
