@@ -1,7 +1,8 @@
-praveen@profit-B450M-DS3H:~/SampleWebApp$ ls -ltr ~/app_scripts/
-total 16
--rwxr-xr-x 1 jenkins jenkins 1609 Apr  8 17:19 deploy.sh
--rw-r--r-- 1 root    root    2955 Apr  9 10:41 war.sh
--rw-r--r-- 1 root    root    3886 Apr  9 12:23 SampleWebApp.war
--rw-r--r-- 1 jenkins jenkins 3886 Apr  9 13:04 SampleWebAPP-a64b697.war
-praveen@profit-B450M-DS3H:~/SampleWebApp$ 
+sudo ps -ef | grep tomcat
+[sudo] password for praveen: 
+tomcat       714       1  0 09:18 ?        00:00:32 /usr/lib/jvm/default-java/bin/java -Djava.util.logging.config.file=/var/lib/tomcat9/conf/logging.properties -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager -Djava.awt.headless=true -Djdk.tls.ephemeralDHKeySize=2048 -Djava.protocol.handler.pkgs=org.apache.catalina.webresources -Dorg.apache.catalina.security.SecurityListener.UMASK=0027 -Dignore.endorsed.dirs= -classpath /usr/share/tomcat9/bin/bootstrap.jar:/usr/share/tomcat9/bin/tomcat-juli.jar -Dcatalina.base=/var/lib/tomcat9 -Dcatalina.home=/usr/share/tomcat9 -Djava.io.tmpdir=/tmp org.apache.catalina.startup.Bootstrap start
+praveen    32699   10389  0 13:52 pts/2    00:00:00 grep --color=auto tomcat
+praveen@profit-B450M-DS3H:~/SampleWebApp$ ls /opt
+bdconfigure  bitdefender-security-tools  cursor.appimage  cursor.png  google  installer  installer.xml  linux-amd64  scripts
+praveen@profit-B450M-DS3H:~/SampleWebApp$ groups
+praveen
