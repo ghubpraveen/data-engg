@@ -1,18 +1,7 @@
-[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
-✅ WAR built successfully: /var/lib/jenkins/workspace/UAT/target/SampleWebApp.war
--rw-r--r-- 1 jenkins jenkins 3.8K Apr  9 13:04 /var/lib/jenkins/workspace/UAT/target/SampleWebApp.war
-❌ WAR copy failed
-[Pipeline] }
-[Pipeline] // script
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (4. Archive WAR)
-Stage "4. Archive WAR" skipped due to earlier failure(s)
-[Pipeline] getContext
-[Pipeline] }
-[Pipeline] // stage
-[Pipeline] stage
-[Pipeline] { (Declarative: Post Actions)
-[Pipeline] echo
-❌ Build FAILED — Check console output above
+praveen@profit-B450M-DS3H:~/SampleWebApp$ ls -ltr ~/app_scripts/
+total 16
+-rwxr-xr-x 1 jenkins jenkins 1609 Apr  8 17:19 deploy.sh
+-rw-r--r-- 1 root    root    2955 Apr  9 10:41 war.sh
+-rw-r--r-- 1 root    root    3886 Apr  9 12:23 SampleWebApp.war
+-rw-r--r-- 1 jenkins jenkins 3886 Apr  9 13:04 SampleWebAPP-a64b697.war
+praveen@profit-B450M-DS3H:~/SampleWebApp$ 
