@@ -1,68 +1,179 @@
-# WAR Generation function
-Build_APP_WAR() {
-    export GCP_WAR_THREAD=WAR-thread-$START_TIME
+#!/bin/bash
+#Purpose : Jenkins UAT WAR Build Generation
+#Created By:  Sathish.V.S
+#Modified By: Updated for GitHub webhook based auto trigger
+#Modification Date: April 2026
+####################################################################
+set -e  # Exit on any command failure
+trap ‘echo “❌ Script failed at line $LINENO.”’ ERR
 
+START_TIME=`date +%s`
+GCP_THREAD=gcp-thread-$START_TIME
+NODE_THREAD=node-thread-$START_TIME
+
+########## UAT GCHAT Environment ####################
+export GCHAT_URL=“https://chat.googleapis.com/v1/spaces/AAAAkRPquRE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=8P_S4Exea74xKAFnKua2-q7Tnaawpkk7hwhESi8L4f0&messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD”
+export DEV_GCHAT_URL=“https://chat.googleapis.com/v1/spaces/AAQAncj_kkw/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Qz3EajgBpT1HaSNIIEwGGaAb1-UpdBL53KlMHXFaz7k&messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD”
+##############################################################
+
+# ── Step 1: Read the params file written by Jenkinsfile ───
+
+PARAMS_FILE=$1
+
+if [[ -z “$PARAMS_FILE” || ! -f “$PARAMS_FILE” ]]; then
+echo “❌ ERROR: Params file not found: $PARAMS_FILE”
+curl -sH ‘Content-Type: application/json’ -X POST $GCHAT_URL   
+–data ‘{“text”: “❌ Params file not found. Build aborted.”, “thread” : { “threadKey”: “THREAD-’$(date +%s)’”}}’ >> /dev/null
+exit 1
+fi
+
+echo “📄 Reading params from: $PARAMS_FILE”
+set -a
+source “$PARAMS_FILE”
+set +a
+
+# ── Step 2: Derive variables from params ──────────────────
+
+export repo_workspace=$WORKSPACE
+export hostname=`hostname`
+
+if [[ “$BUILD_CAUSE” == *Timer* ]]; then
+export BUILD_USER=“jenkins-bot”
+else
+export BUILD_USER=”${BUILD_CAUSE}”
+fi
+
+########## Docker Image generation Parameter ############
+export NAME=“Profit_UAT_App”
+export STS=“app”
+export BUILD_PATH=”$repo_workspace/workspace/app-tomcat”
+export WAR_NAME=“app.war”
+export SRC_WAR=”$repo_workspace/workspace/profit/app-web/target/app.war”
+export DEST_WAR=”$BUILD_PATH/app/live/profit/webapps/app.war”
+export DEST=”$BUILD_PATH/app/live/profit/webapps/”
+export PROJECT=“apptivo-app-stag”
+export GCR=“us-central1-docker.pkg.dev”
+export ENV=“uat-build”
+export START_TIME=`date +%s`
+export THREAD=thread-$START_TIME
+
+# ── Step 3: Print all params for verification ─────────────
+
+echo “===============================”
+echo “JOB_NAME    : $JOB_NAME”
+echo “BRANCH      : $BRANCH”
+echo “COMMIT_HASH : $COMMIT_HASH”
+echo “BUILD_ENV   : $BUILD_ENV”
+echo “REQUIRED    : $REQUIRED”
+echo “BUILD_USER  : $BUILD_USER”
+echo “WORKSPACE   : $WORKSPACE”
+echo “===============================”
+
+########################################################
+
+# ── Step 4: Validate REQUIRED param is present ───────────
+
+if [[ -z “$REQUIRED” ]]; then
+echo “❌ ERROR: REQUIRED parameter is missing”
+curl -sH ‘Content-Type: application/json’ -X POST $GCHAT_URL   
+–data ‘{“text”: “’“Hi $BUILD_USER,\n*$JOB_NAME* in $BUILD_ENV\n*Input Arguments are missing* please check the input arguments”’”, “thread” : { “threadKey”: “’”$GCP_THREAD”’”}}’ >> /dev/null
+exit 1
+fi
+
+########################################################
+trap ‘send_alert; exit 1’ ERR
+
+########################################################################
+#WAR Generation function
+Build_APP_WAR()
+{
+export GCP_WAR_THREAD=WAR-thread-$START_TIME
+
+```
+    # ── send_alert specific to WAR generation ─────────
     send_alert() {
-        curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL \
-        --data '{"text": "Hi '$BUILD_USER', \n'*$JOB_NAME*' \nMaven WAR Generation is Failed,\nPlease check", "thread" : { "threadKey": "THREAD-'$(date +%s)'"}}' >> /dev/null
-        exit 1
+    curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL --data '{"text": "Hi '$BUILD_USER', \n'*$JOB_NAME*' \nMaven WAR Generation is Failed,\nPlease check", "thread" : { "threadKey": "THREAD-'$(date +%s)'"}}' >> /dev/null
+    exit 1
     }
 
-    # ── Use Jenkins workspace directly ────────────────────
-    JOB_PATH=$WORKSPACE
-
-    cd $JOB_PATH
-
-    # ── Build info for GChat ───────────────────────────────
+    ### Build info using params from Jenkinsfile ###
+    export CURRENT_BRANCH=$BRANCH
+    export REVISION=$COMMIT_HASH
     export BUILDINFO="Branch: $BRANCH | Commit: ${COMMIT_HASH:0:7}"
 
-    # ── GChat: WAR generation started ─────────────────────
-    curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL \
-    --data '{"text": "'"Hi <users/all>\nUAT_Deployment_Maven_"$BUILD_USER",\n*$BUILDINFO*"'", "thread" : { "threadKey": "'"$GCP_WAR_THREAD"'"}}' >> /dev/null
-
-    curl -sH 'Content-Type: application/json' -X POST $DEV_GCHAT_URL \
-    --data '{"text": "'"Hi <users/all>\nUAT_Deployment_Maven_"$BUILD_USER",\n*$BUILDINFO*"'", "thread" : { "threadKey": "'"$GCP_WAR_THREAD"'"}}' >> /dev/null
-
+    ### GChat update for Application WAR Generation ###
+    curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL --data '{"text": "'"Hi <users/all>\nUAT_Deployment_Maven_"$BUILD_USER",\n*$BUILDINFO*"'", "thread" : { "threadKey": "'"$GCP_WAR_THREAD"'"}}' >> /dev/null
+    curl -sH 'Content-Type: application/json' -X POST $DEV_GCHAT_URL --data '{"text": "'"Hi <users/all>\nUAT_Deployment_Maven_"$BUILD_USER",\n*$BUILDINFO*"'", "thread" : { "threadKey": "'"$GCP_WAR_THREAD"'"}}' >> /dev/null
     sleep 1
+    curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL --data '{"text": "'"Hi <users/all>\nJob Name: $JOB_NAME,\n*Application WAR initiated* in $BUILD_ENV"'", "thread" : { "threadKey": "'"$GCP_WAR_THREAD"'"}}' >> /dev/null
 
-    curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL \
-    --data '{"text": "'"Hi <users/all>\nJob Name: $JOB_NAME,\n*Application WAR initiated* in $BUILD_ENV"'", "thread" : { "threadKey": "'"$GCP_WAR_THREAD"'"}}' >> /dev/null
-
-    # ── Build properties file ──────────────────────────────
+    ### To update the variables in the app.war/WEB-INF/classes/build-info.properties ###
     MVN_ENV_PROP_FILE="/var/tmp/$JOB_NAME-mvn-env.properties"
 
-    # ── Safe MR_ID for GitHub (GitLab uses merge request) ──
+    # ── Safe MR_ID — works for both GitHub and GitLab ──
     MR_ID=$(git log -1 | grep "See merge request" | cut -d"!" -f2 || echo "0")
     MR_ID=${MR_ID:-0}
+    if [ "$MR_ID" -gt 0 ] 2>/dev/null; then
+        echo "MR_ID=$MR_ID"
+    else
+        MR_ID=0
+        echo "MR_ID=$MR_ID"
+    fi
 
     COMMITS_COUNT=$(git log --oneline | wc -l)
     BUILD_ID="${COMMITS_COUNT}_${MR_ID}"
     TIME_STAMP=$(date +%Y%m%d-%H%M-%Z)
 
-    echo "build_id=$BUILD_ID"   > $MVN_ENV_PROP_FILE
+    echo "build_id=$BUILD_ID" > $MVN_ENV_PROP_FILE
     echo "build_time=$TIME_STAMP" >> $MVN_ENV_PROP_FILE
+    ### To update the variables in the app.war/WEB-INF/classes/build-info.properties ###
 
-    # ── Maven build ────────────────────────────────────────
-    echo "Maven build going to start"
+    #Maven build going to start
+    #====================================================================================================
+                echo "Maven build going to start"
+    #====================================================================================================
+   export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+   export PATH=$JAVA_HOME/bin:$PATH
+   	/u01/sfw/apache-maven-3.6.3/bin/mvn clean install -U -DjavaVersion=17 -Dbranch_name=$CURRENT_BRANCH -Dcommit_hash=$REVISION -Dbuild_id=$BUILD_ID -Dbuild_time=$TIME_STAMP || send_alert
+    export BUILDINFO="Branch: $BRANCH | Commit: ${COMMIT_HASH:0:7}"
+    export H_WORKSPACE_HOME=$repo_workspace/workspace/profit
+    export BUILD_DEPLOY_FOLDER=build/deploy
+    export BUILD_FILENAME=app.war
+    export DEPLOY_SOURCE="$H_WORKSPACE_HOME/app-web/target/app.war"
+    export MD5SUM=`md5sum $DEPLOY_SOURCE | awk '{print $1}'`
 
-    # Use system Java and Maven (no hardcoded paths)
-    mvn clean package -DskipTests \
-        -Dbranch_name=$BRANCH \
-        -Dcommit_hash=$COMMIT_HASH \
-        -Dbuild_id=$BUILD_ID \
-        -Dbuild_time=$TIME_STAMP || send_alert
+# Calculate the size of app.war using du
+  export Application_War_Size=$(du -sh $DEPLOY_SOURCE  | cut -f1)
+# Display the result
+  echo "app.war size = $Application_War_Size"
 
-    # ── Confirm WAR ────────────────────────────────────────
-    export DEPLOY_SOURCE="$WORKSPACE/target/SampleWebApp.war"
-    export MD5SUM=$(md5sum $DEPLOY_SOURCE | awk '{print $1}')
-    export Application_War_Size=$(du -sh $DEPLOY_SOURCE | cut -f1)
-
-    echo "app.war size = $Application_War_Size"
-
-    # ── GChat: WAR generation done ─────────────────────────
-    curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL \
-    --data '{"text": "'"Hi <users/all>\n*Job Name: $JOB_NAME* \n*Application WAR generated* in $BUILD_ENV \n$BUILDINFO \nmd5sum: *$MD5SUM* \napp.war = *$Application_War_Size*"'", "thread" : { "threadKey": "'"$GCP_WAR_THREAD"'"}}' >> /dev/null
-
+    curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL --data '{"text": "'"Hi <users/all>\n*Job Name: $JOB_NAME* \n*Application WAR generated* in $BUILD_ENV for $NAME \nmd5sum: *$MD5SUM* \napp.war = *$Application_War_Size* "'", "thread" : { "threadKey": "'"$GCP_WAR_THREAD"'"}}' >> /dev/null
+    # Application WAR Generated is Done
     sleep 1
-    echo "Maven Application WAR Generated is Done"
+    #====================================================================================================
+                echo "Maven Application WAR Generated is Done"
+    #====================================================================================================
 }
+```
+
+###########
+for i in $REQUIRED
+do
+echo “$i”
+input=$i
+case $input in
+
+```
+        Build)
+            Build_APP_WAR || send_alert
+                ;;
+        *)
+            echo "Err... Please select the build request"
+            curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL --data '{"text": "Hi '$BUILD_USER',\n*Please select appropriate Build request*", "thread" : { "threadKey": "THREAD-'$(date +%s)'"}}' >> /dev/null
+            exit 1
+                ;;
+    esac
+done
+```
+
+##### END
