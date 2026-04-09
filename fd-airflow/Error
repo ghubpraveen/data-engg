@@ -1,25 +1,19 @@
 #!/bin/bash
 set -e
-trap 'echo "❌ Failed at line $LINENO"' ERR
+trap 'echo "❌ Script failed at line $LINENO."' ERR
 
-# ── GChat Webhook URL ─────────────────────────────────────
-# Replace this with your team's GChat webhook URL
-GCHAT_URL="REPLACE_WITH_YOUR_GCHAT_WEBHOOK_URL"
+START_TIME=`date +%s`
+GCP_THREAD=gcp-thread-$START_TIME
 
-# ── GChat Alert Function ──────────────────────────────────
-send_gchat() {
-    local MESSAGE=$1
-    curl -sH 'Content-Type: application/json' \
-        -X POST "$GCHAT_URL" \
-        --data "{\"text\": \"$MESSAGE\"}" >> /dev/null
-}
+# ── GChat URLs (unchanged from original) ─────────────────
+export GCHAT_URL="https://chat.googleapis.com/v1/spaces/AAAAkRPquRE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=8P_S4Exea74xKAFnKua2-q7Tnaawpkk7hwhESi8L4f0&messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD"
+export DEV_GCHAT_URL="https://chat.googleapis.com/v1/spaces/AAQAncj_kkw/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Qz3EajgBpT1HaSNIIEwGGaAb1-UpdBL53KlMHXFaz7k&messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD"
 
 # ── Step 1: Read the params file ──────────────────────────
 PARAMS_FILE=$1
 
 if [[ -z "$PARAMS_FILE" || ! -f "$PARAMS_FILE" ]]; then
     echo "❌ ERROR: Params file not found: $PARAMS_FILE"
-    send_gchat "❌ *$JOB_NAME* — Params file not found. Build aborted."
     exit 1
 fi
 
@@ -38,24 +32,34 @@ echo "REQUIRED    : $REQUIRED"
 echo "WORKSPACE   : $WORKSPACE"
 echo "==============================="
 
-# Notify GChat that build has started
-send_gchat "🔨 *$JOB_NAME* — Build started on branch *$BRANCH* by $BUILD_CAUSE \nCommit: \`${COMMIT_HASH:0:7}\`"
+    if [[ "$BUILD_CAUSE" == *Timer* ]]; then
+        export BUILD_USER="jenkins-bot"
+    else
+        export BUILD_USER="${BUILD_CAUSE}"
+    fi
 
-# ── Step 3: Build WAR ─────────────────────────────────────
+# ── Alert Functions (unchanged from original) ─────────────
+send_alert() {
+    curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL \
+    --data '{"text": "Hi '$BUILD_USER', \n'*$JOB_NAME*' is Failed, Please check", 
+    "thread" : { "threadKey": "THREAD-'$(date +%s)'"}}' >> /dev/null
+    exit 1
+}
+
+send_success() {
+    curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL \
+    --data '{"text": "Hi '$BUILD_USER', \n'*$JOB_NAME*' WAR build is successful on branch: '$BRANCH' \nCommit: '${COMMIT_HASH:0:7}'",
+    "thread" : { "threadKey": "THREAD-'$(date +%s)'"}}' >> /dev/null
+}
+
+trap 'send_alert; exit 1' ERR
+
+# ── Step 3: Notify GChat build started ────────────────────
+curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL \
+--data '{"text": "Hi '$BUILD_USER', \n'*$JOB_NAME*' Build started on branch: '$BRANCH' \nCommit: '${COMMIT_HASH:0:7}'",
+"thread" : { "threadKey": "THREAD-'$(date +%s)'"}}' >> /dev/null
+
+# ── Step 4: Build WAR ─────────────────────────────────────
 cd "$WORKSPACE"
 
-echo "🔨 Starting Maven WAR build..."
-mvn clean package -DskipTests
-
-# ── Step 4: Confirm WAR was created ───────────────────────
-WAR_FILE="$WORKSPACE/target/SampleWebApp.war"
-
-if [[ -f "$WAR_FILE" ]]; then
-    echo "✅ WAR built successfully: $WAR_FILE"
-    ls -lh "$WAR_FILE"
-    send_gchat "✅ *$JOB_NAME* — WAR built successfully on branch *$BRANCH* \nCommit: \`${COMMIT_HASH:0:7}\`"
-else
-    echo "❌ WAR file not found after build!"
-    send_gchat "❌ *$JOB_NAME* — WAR build failed on branch *$BRANCH* \nCommit: \`${COMMIT_HASH:0:7}\`"
-    exit 1
-fi
+echo "🔨 Starting Maven​​​​​​​​​​​​​​​​
