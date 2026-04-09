@@ -62,4 +62,17 @@ curl -sH 'Content-Type: application/json' -X POST $GCHAT_URL \
 # ── Step 4: Build WAR ─────────────────────────────────────
 cd "$WORKSPACE"
 
-echo "🔨 Starting Maven​​​​​​​​​​​​​​​​
+echo "🔨 Starting Maven WAR build..."
+mvn clean package -DskipTests
+
+# ── Step 5: Confirm WAR was created ───────────────────────
+WAR_FILE="$WORKSPACE/target/SampleWebApp.war"
+
+if [[ -f "$WAR_FILE" ]]; then
+    echo "✅ WAR built successfully: $WAR_FILE"
+    ls -lh "$WAR_FILE"
+    send_success
+else
+    echo "❌ WAR file not found after build!"
+    send_alert
+fi
