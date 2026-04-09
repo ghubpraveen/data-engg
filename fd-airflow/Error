@@ -2,11 +2,24 @@
 set -e
 trap 'echo "❌ Failed at line $LINENO"' ERR
 
+# ── GChat Webhook URL ─────────────────────────────────────
+# Replace this with your team's GChat webhook URL
+GCHAT_URL="REPLACE_WITH_YOUR_GCHAT_WEBHOOK_URL"
+
+# ── GChat Alert Function ──────────────────────────────────
+send_gchat() {
+    local MESSAGE=$1
+    curl -sH 'Content-Type: application/json' \
+        -X POST "$GCHAT_URL" \
+        --data "{\"text\": \"$MESSAGE\"}" >> /dev/null
+}
+
 # ── Step 1: Read the params file ──────────────────────────
 PARAMS_FILE=$1
 
 if [[ -z "$PARAMS_FILE" || ! -f "$PARAMS_FILE" ]]; then
     echo "❌ ERROR: Params file not found: $PARAMS_FILE"
+    send_gchat "❌ *$JOB_NAME* — Params file not found. Build aborted."
     exit 1
 fi
 
@@ -25,6 +38,9 @@ echo "REQUIRED    : $REQUIRED"
 echo "WORKSPACE   : $WORKSPACE"
 echo "==============================="
 
+# Notify GChat that build has started
+send_gchat "🔨 *$JOB_NAME* — Build started on branch *$BRANCH* by $BUILD_CAUSE \nCommit: \`${COMMIT_HASH:0:7}\`"
+
 # ── Step 3: Build WAR ─────────────────────────────────────
 cd "$WORKSPACE"
 
@@ -37,64 +53,9 @@ WAR_FILE="$WORKSPACE/target/SampleWebApp.war"
 if [[ -f "$WAR_FILE" ]]; then
     echo "✅ WAR built successfully: $WAR_FILE"
     ls -lh "$WAR_FILE"
+    send_gchat "✅ *$JOB_NAME* — WAR built successfully on branch *$BRANCH* \nCommit: \`${COMMIT_HASH:0:7}\`"
 else
     echo "❌ WAR file not found after build!"
-    exit 1
-fi
-
-# ── Step 5: Copy WAR to deployment directory ──────────────
-DEPLOY_DIR="/home/praveen/app_scripts/"
-
-mkdir -p "$DEPLOY_DIR"
-
-cp "$WAR_FILE" "$DEPLOY_DIR/SampleWebApp-${COMMIT_HASH:0:7}.war"
-cp "$WAR_FILE" "$DEPLOY_DIR/SampleWebApp-latest.war"
-
-if [[ -f "$DEPLOY_DIR/SampleWebApp-${COMMIT_HASH:0:7}.war" ]]; then
-    echo "✅ WAR copied successfully!"
-    ls -lh "$DEPLOY_DIR"
-else
-    echo "❌ WAR copy failed"
-    exit 1
-fi
-
-# ── Step 6: Deploy to Tomcat ──────────────────────────────
-TOMCAT_WEBAPPS="/var/lib/tomcat9/webapps"
-APP_NAME="SampleWebApp"
-
-echo "🚀 Starting Tomcat deployment..."
-
-# Stop Tomcat
-echo "⏹ Stopping Tomcat..."
-sudo systemctl stop tomcat9
-
-# Remove old deployment
-if [[ -d "$TOMCAT_WEBAPPS/$APP_NAME" ]]; then
-    echo "🗑 Removing old deployment..."
-    sudo rm -rf "$TOMCAT_WEBAPPS/$APP_NAME"
-fi
-
-if [[ -f "$TOMCAT_WEBAPPS/$APP_NAME.war" ]]; then
-    echo "🗑 Removing old WAR..."
-    sudo rm -f "$TOMCAT_WEBAPPS/$APP_NAME.war"
-fi
-
-# Copy new WAR to Tomcat
-echo "📂 Copying new WAR to Tomcat..."
-sudo cp "$WAR_FILE" "$TOMCAT_WEBAPPS/$APP_NAME.war"
-
-# Start Tomcat
-echo "▶ Starting Tomcat..."
-sudo systemctl start tomcat9
-
-# ── Step 7: Verify Deployment ─────────────────────────────
-echo "⏳ Waiting for Tomcat to deploy WAR..."
-sleep 15
-
-if [[ -d "$TOMCAT_WEBAPPS/$APP_NAME" ]]; then
-    echo "✅ Deployment successful!"
-    echo "🌐 App available at: http://localhost:8080/$APP_NAME"
-else
-    echo "❌ Deployment failed — folder not created by Tomcat"
+    send_gchat "❌ *$JOB_NAME* — WAR build failed on branch *$BRANCH* \nCommit: \`${COMMIT_HASH:0:7}\`"
     exit 1
 fi
