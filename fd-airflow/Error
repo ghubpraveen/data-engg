@@ -1,52 +1,90 @@
+[Pipeline] sh
+process apparently never started in /u01/jenkins/jenkins/jobs/Praveen_CICD/workspace@tmp/durable-eb258f08
+(running Jenkins temporarily with -Dorg.jenkinsci.plugins.durabletask.BourneShellScript.LAUNCH_DIAGNOSTICS=true might make the problem clearer)
+[Pipeline] }
+[Pipeline] // stage
+
 pipeline {
     agent any
+
+    // triggers {
+    //     pollSCM('* * * * *')
+    // }
+    
+    triggers {
+        githubPush()   // auto-triggers when code is pushed/merged
+    }
 
     environment {
         PARAMS_FILE = "${env.WORKSPACE}/build-params.env"
     }
 
-    triggers {
-        githubPush()
-    }
-
     stages {
 
-        stage('Checkout') {
+        stage('0. Checkout') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Fetch & Store Params') {
+        stage('1. Extract Parameters') {
             steps {
                 script {
-                    // Fetch branch name and full commit hash
                     env.BRANCH      = env.GIT_BRANCH.replaceAll('origin/', '')
-                    env.COMMIT_HASH = sh(
-                        script: 'git rev-parse HEAD',
-                        returnStdout: true
-                    ).trim()
+                    env.COMMIT_HASH = env.GIT_COMMIT
+                    env.BUILD_CAUSE = 'jenkins-bot'
+                    env.REQUIRED    = 'Build'
+                    env.BUILD_ENV   = 'uat'
 
-                    // Write to temp file
-                    writeFile file: env.PARAMS_FILE, text: """\
-BRANCH=${env.BRANCH}
-COMMIT_HASH=${env.COMMIT_HASH}
-"""
-                    // Confirm what was stored
-                    echo "✅ Params stored at: ${env.PARAMS_FILE}"
-                    sh "cat ${env.PARAMS_FILE}"
+                    echo """
+                    ======= Parameters Extracted =======
+                    BRANCH      : ${env.BRANCH}
+                    COMMIT_HASH : ${env.COMMIT_HASH}
+                    BUILD_CAUSE : ${env.BUILD_CAUSE}
+                    REQUIRED    : ${env.REQUIRED}
+                    BUILD_ENV   : ${env.BUILD_ENV}
+                    ====================================
+                    """
                 }
             }
         }
 
-        stage('Build WAR') {
+        stage('2. Write Params to File') {
             steps {
-                sh """
-                    bash ${env.WORKSPACE}/java_deployment.sh ${env.PARAMS_FILE}
-                """
+                script {
+                    writeFile file: env.PARAMS_FILE, text: "JOB_NAME=${env.JOB_NAME}\nBRANCH=${env.BRANCH}\nCOMMIT_HASH=${env.COMMIT_HASH}\nBUILD_ENV=${env.BUILD_ENV}\nREQUIRED=${env.REQUIRED}\nBUILD_CAUSE=${env.BUILD_CAUSE}\nWORKSPACE=${env.WORKSPACE}\n"
+                    echo "Params written:"
+                    echo readFile(env.PARAMS_FILE)
+                }
             }
         }
 
+        stage('3. Build WAR') {
+            steps {
+                sh """
+                    chmod +x ${env.WORKSPACE}/deploy.sh
+                    bash ${env.WORKSPACE}/deploy.sh ${env.PARAMS_FILE}
+                """
+
+                echo "📦 Reading params and building WAR..."
+                sh "bash ${env.WORKSPACE}/deploy.sh ${env.PARAMS_FILE}"
+            }
+        }
+        stage('4. Archive WAR') {
+            steps {
+                // Save the WAR as a Jenkins build artifact
+                archiveArtifacts artifacts: 'target/*.war', fingerprint: true
+                echo "✅ WAR archived successfully"
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "🎉 Build SUCCESS — Branch: ${env.BRANCH} | Commit: ${env.COMMIT_HASH}"
+        }
+        failure {
+            echo "❌ Build FAILED — Check console output above"
+        }
     }
 }
-
