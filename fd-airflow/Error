@@ -88,3 +88,100 @@ pipeline {
         }
     }
 }
+
+
+pipeline {
+    agent any
+
+    triggers {
+        githubPush()
+    }
+
+    environment {
+        // Create a unique path in /tmp based on the Job Name and Build Number
+        // This ensures parallel builds don't collide
+        TMP_WORKSPACE = "/tmp/jenkins/${env.JOB_NAME}/${env.BUILD_NUMBER}"
+        PARAMS_FILE   = "${env.TMP_WORKSPACE}/build-params.env"
+    }
+
+    stages {
+        stage('0. Setup & Checkout') {
+            steps {
+                // Create the directory first
+                sh "mkdir -p ${env.TMP_WORKSPACE}"
+                
+                // Perform checkout inside the /tmp location
+                dir("${env.TMP_WORKSPACE}") {
+                    checkout scm
+                }
+            }
+        }
+
+        stage('1. Extract Parameters') {
+            steps {
+                script {
+                    env.BRANCH      = env.GIT_BRANCH?.replaceAll('origin/', '') ?: 'master'
+                    env.COMMIT_HASH = env.GIT_COMMIT
+                    env.BUILD_CAUSE = 'jenkins-bot'
+                    env.REQUIRED    = 'Build'
+                    env.BUILD_ENV   = 'uat'
+                }
+            }
+        }
+
+        stage('2. Write Params to File') {
+            steps {
+                // dir() ensures writeFile and subsequent sh calls happen in /tmp
+                dir("${env.TMP_WORKSPACE}") {
+                    writeFile file: env.PARAMS_FILE, text: """JOB_NAME=${env.JOB_NAME}
+BRANCH=${env.BRANCH}
+COMMIT_HASH=${env.COMMIT_HASH}
+BUILD_ENV=${env.BUILD_ENV}
+REQUIRED=${env.REQUIRED}
+BUILD_CAUSE=${env.BUILD_CAUSE}
+WORKSPACE=${env.TMP_WORKSPACE}
+"""
+                    echo "✅ Params written to /tmp"
+                }
+            }
+        }
+
+        stage('3. Build WAR') {
+            steps {
+                dir("${env.TMP_WORKSPACE}") {
+                    echo "📦 Running Build in ${env.TMP_WORKSPACE}..."
+                    sh """
+                        chmod +x ./deploy.sh
+                        bash ./deploy.sh ${env.PARAMS_FILE}
+                    """
+                }
+            }
+        }
+
+        stage('4. Archive WAR') {
+            steps {
+                dir("${env.TMP_WORKSPACE}") {
+                    archiveArtifacts artifacts: 'target/*.war', allowEmptyArchive: false
+                    echo "✅ WAR archived successfully from /tmp"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // CRITICAL: Clean up the unique /tmp directory after every job
+            echo "🧹 Cleaning up temporary workspace: ${env.TMP_WORKSPACE}"
+            sh "rm -rf ${env.TMP_WORKSPACE}"
+            
+            // Optional: Clean up empty parent directories to keep /tmp pristine
+            sh "rmdir /tmp/jenkins/${env.JOB_NAME} || true"
+        }
+        success {
+            echo "🎉 Build SUCCESS — Branch: ${env.BRANCH}"
+        }
+        failure {
+            echo "❌ Build FAILED — Check console output"
+        }
+    }
+}
