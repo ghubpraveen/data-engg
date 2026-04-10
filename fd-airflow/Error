@@ -1,1 +1,52 @@
+pipeline {
+    agent any
+
+    environment {
+        PARAMS_FILE = "${env.WORKSPACE}/build-params.env"
+    }
+
+    triggers {
+        githubPush()
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Fetch & Store Params') {
+            steps {
+                script {
+                    // Fetch branch name and full commit hash
+                    env.BRANCH      = env.GIT_BRANCH.replaceAll('origin/', '')
+                    env.COMMIT_HASH = sh(
+                        script: 'git rev-parse HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    // Write to temp file
+                    writeFile file: env.PARAMS_FILE, text: """\
+BRANCH=${env.BRANCH}
+COMMIT_HASH=${env.COMMIT_HASH}
+"""
+                    // Confirm what was stored
+                    echo "✅ Params stored at: ${env.PARAMS_FILE}"
+                    sh "cat ${env.PARAMS_FILE}"
+                }
+            }
+        }
+
+        stage('Build WAR') {
+            steps {
+                sh """
+                    bash ${env.WORKSPACE}/java_deployment.sh ${env.PARAMS_FILE}
+                """
+            }
+        }
+
+    }
+}
 
